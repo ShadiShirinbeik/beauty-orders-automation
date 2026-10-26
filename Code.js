@@ -1,3 +1,5 @@
+// Deployed automatically via GitHub Actions
+
 const ORDERS_SHEET = 'Orders';
 const SUMMARY_SHEET = 'Summary';
 
