@@ -51,3 +51,54 @@ function randomOrder_() {
 
   return [date, customer, product.brand, product.category, qty, qty * product.price, status, ''];
 }
+
+/**
+ * Rewrites the Flag column: MISSING_DATA for rows without Customer or Amount,
+ * DUPLICATE for repeats of an earlier row, empty otherwise. Returns the counts.
+ */
+function flagOrders() {
+  const sheet = SpreadsheetApp.getActiveSheet();
+  const counts = { duplicates: 0, missing: 0, clean: 0 };
+  const numRows = sheet.getLastRow() - 1;
+  if (numRows < 1) {
+    console.log(counts);
+    return counts;
+  }
+
+  const rows = sheet.getRange(2, 1, numRows, HEADERS.length).getValues();
+  const customerCol = HEADERS.indexOf('Customer');
+  const amountCol = HEADERS.indexOf('Amount');
+  const seenKeys = new Set();
+
+  const flags = rows.map(row => {
+    if (row[customerCol] === '' || row[amountCol] === '') {
+      counts.missing++;
+      return ['MISSING_DATA'];
+    }
+    const key = orderKey_(row);
+    if (seenKeys.has(key)) {
+      counts.duplicates++;
+      return ['DUPLICATE'];
+    }
+    seenKeys.add(key);
+    counts.clean++;
+    return [''];
+  });
+
+  sheet.getRange(2, HEADERS.indexOf('Flag') + 1, numRows, 1).setValues(flags);
+  console.log(counts);
+  return counts;
+}
+
+/**
+ * Returns a text key from Date + Customer + Brand + Amount, used to spot duplicate orders.
+ */
+function orderKey_(row) {
+  const date = row[HEADERS.indexOf('Date')];
+  return JSON.stringify([
+    date instanceof Date ? date.getTime() : date,
+    row[HEADERS.indexOf('Customer')],
+    row[HEADERS.indexOf('Brand')],
+    row[HEADERS.indexOf('Amount')],
+  ]);
+}
