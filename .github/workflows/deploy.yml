@@ -1,0 +1,38 @@
+# Pushes the code on main to the Apps Script project.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# Only one deploy at a time; a newer one waits instead of cancelling a push in progress.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Recreate the clasp login (~/.clasprc.json) and project config (.clasp.json) from secrets.
+      - name: Write clasp credentials
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+          CLASP_JSON: ${{ secrets.CLASP_JSON }}
+        run: |
+          printf '%s' "$CLASPRC_JSON" > ~/.clasprc.json
+          printf '%s' "$CLASP_JSON" > .clasp.json
+
+      # Pinned to the clasp version used locally, so the credentials file format matches.
+      # --force skips the "overwrite manifest?" prompt.
+      - name: Push to Apps Script
+        run: npx --yes @google/clasp@3.4.1 push --force
