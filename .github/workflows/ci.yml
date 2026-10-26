@@ -1,0 +1,35 @@
+# Checks pull requests to main before they can be merged.
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Syntax-check every .js file in the repo root (doesn't run them).
+      - name: Syntax check
+        run: |
+          for file in *.js; do
+            node --check "$file"
+          done
+
+      # clasp config holds the script ID and login token; it must never be committed.
+      - name: Ensure clasp config is not tracked
+        run: |
+          tracked=$(git ls-files .clasp.json .clasprc.json)
+          if [ -n "$tracked" ]; then
+            echo "::error::These files must not be committed: $tracked"
+            exit 1
+          fi
