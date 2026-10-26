@@ -118,13 +118,14 @@ function orderKey_(row) {
 }
 
 /**
- * Rebuilds the Summary sheet from the unflagged rows on the Orders sheet.
+ * Rebuilds the Summary sheet from the unflagged rows on the Orders sheet and returns the stats.
  */
 function buildSummary() {
   const stats = computeStats_(readCleanOrders_());
   const sheet = getOrCreateSheet_(SUMMARY_SHEET);
   sheet.clear();
   writeSummary_(sheet, stats);
+  return stats;
 }
 
 /**
@@ -222,4 +223,65 @@ function writeSummary_(sheet, stats) {
   sheet.getRangeList(currencyCells).setNumberFormat(EUR_FORMAT);
   sheet.getRange(metrics.length, 2).setNumberFormat('yyyy-mm-dd hh:mm');
   sheet.autoResizeColumns(1, 2);
+}
+
+/**
+ * Daily job: flags bad rows, rebuilds the Summary sheet, then emails the digest.
+ */
+function runDailyPipeline() {
+  const counts = flagOrders();
+  const stats = buildSummary();
+  stats.flagged = counts.duplicates + counts.missing;
+  sendDailyDigest(stats);
+}
+
+/**
+ * Emails a short HTML digest of yesterday's figures, with a link to the spreadsheet, to the script user.
+ */
+function sendDailyDigest(stats) {
+  // getActiveUser() can be empty when run from a trigger; the effective user is then the trigger owner.
+  const recipient = Session.getActiveUser().getEmail() || Session.getEffectiveUser().getEmail();
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const day = dayKey_(yesterday);
+  const url = SpreadsheetApp.getActiveSpreadsheet().getUrl();
+
+  const lines = [
+    ['Revenue yesterday (net)', formatEur_(stats.yesterdayRevenue)],
+    ['Total orders', stats.totalOrders],
+    ['Returned orders', stats.returned],
+    ['Top brand', stats.topBrand],
+    ['Flagged rows', stats.flagged],
+  ];
+  const plainBody = lines.map(([label, value]) => `${label}: ${value}`).join('\n') + `\n\nSpreadsheet: ${url}`;
+  const tableRows = lines
+    .map(([label, value]) => `<tr><td style="padding:4px 16px 4px 0">${label}</td><td><b>${value}</b></td></tr>`)
+    .join('');
+  const htmlBody = `<h3>Beauty orders – ${day}</h3><table>${tableRows}</table>` +
+    `<p><a href="${url}">Open the spreadsheet</a></p>`;
+
+  GmailApp.sendEmail(recipient, `Beauty orders digest – ${day}`, plainBody, { htmlBody: htmlBody });
+}
+
+/**
+ * Formats a number as euros for the email, e.g. 1234.5 -> "€1234.50".
+ */
+function formatEur_(amount) {
+  return `€${amount.toFixed(2)}`;
+}
+
+/**
+ * Replaces any existing runDailyPipeline trigger with one that runs daily between 7 and 8 AM.
+ */
+function installDailyTrigger() {
+  ScriptApp.getProjectTriggers()
+    .filter(trigger => trigger.getHandlerFunction() === 'runDailyPipeline')
+    .forEach(trigger => ScriptApp.deleteTrigger(trigger));
+
+  ScriptApp.newTrigger('runDailyPipeline')
+    .timeBased()
+    .everyDays(1)
+    .atHour(7)
+    .inTimezone(Session.getScriptTimeZone())
+    .create();
 }
